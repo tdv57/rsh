@@ -356,7 +356,7 @@ pub mod handler {
         use std::sync::Arc;
         use tokio::sync::Mutex;
         use std::str::FromStr;
-
+        use crate::signal_handler::SignalHandler::handle_ctrl_c;
         use tokio::task;
         use tokio::io::{DuplexStream, duplex,AsyncRead, AsyncWrite, AsyncWriteExt};
         use std::process::Stdio;
@@ -521,8 +521,7 @@ pub mod handler {
             }
 
             let mut child = child_cmd.spawn().unwrap();
-            let status = child.wait().await.unwrap();
-            status.code().unwrap_or(1)
+            handle_ctrl_c(&mut child).await
         }
     }
 }

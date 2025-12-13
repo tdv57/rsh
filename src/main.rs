@@ -16,6 +16,7 @@ pub mod instruction;
 pub mod shell_variables;
 pub mod shell_instance;
 pub mod io_manager;
+pub mod signal_handler;
 
 
 #[tokio::main]
