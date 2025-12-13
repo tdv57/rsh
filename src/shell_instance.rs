@@ -47,7 +47,10 @@ impl ShellInstance {
         let divided_tokens = CommandParser::divide_tokens(tokens);
         let mut status = 0;
         for divided_token in divided_tokens {
-            let expanded_token = ShellError::handle_shell_error(CommandParser::expand_variables(divided_token))?;
+            let expanded_token = {
+                let shell_variables_locked = self.shell_variables.lock().await;
+                ShellError::handle_shell_error(shell_variables_locked.expand_variables(divided_token))?
+            };
             let instructions_or_tokens = CommandParser::build_instructions(expanded_token);
             status = CommandExecuter::execute(self.shell_variables.clone(), instructions_or_tokens).await;
             
@@ -95,7 +98,9 @@ pub mod ShellRunning {
                     panic!("ShellRunning::run receive Ok result after get_command");
                 }
                 Err(e) => {
-                    eprintln!("exit code: {:?}", e);
+                    let mut shell_variables_locked = shell_instance.shell_variables.lock().await;
+                    shell_variables_locked.update_status(e);
+                    eprintln!("exit code: {:?}", shell_variables_locked.get_status());
                 }
             }
         }

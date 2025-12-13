@@ -9,6 +9,7 @@
 // rsh
 
 use std::collections::HashMap;
+use std::env::vars_os;
 use std::hash::Hash;
 use std::sync::Arc;
 use std::thread::spawn;
@@ -38,6 +39,9 @@ use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use once_cell::sync::Lazy;
 use tokio::io::{AsyncReadExt, BufReader};
+
+use crate::token::*;
+use crate::shell_error::ShellError;
 
 #[derive(Clone, Copy)]
 pub enum ShellCommands {
@@ -312,7 +316,7 @@ impl ShellVariables {
     pub fn update_history(&mut self, cmd : &str) -> () {
         if !cmd.is_empty() {
             if let Some(mut history) = self.shell_variables.get_mut("HISTORY") {
-                history.push_str(cmd);
+                history.push_str(cmd.trim());
                 history.push('\n');
             } else {
                 panic!("ShellVariable::update_history $HISTORY unset");
@@ -330,6 +334,18 @@ impl ShellVariables {
                 .collect()
         } else {
             panic!("ShellVariables::get_history HISTORY unset"); 
+        }
+    }
+
+    pub fn update_status(&mut self, status: i32) -> () {
+        self.shell_variables.insert("?".to_string(), status.to_string());
+    }
+
+    pub fn get_status(&self) -> i32 {
+        if let Some(status) = self.shell_variables.get("?") {
+            return status.parse().unwrap();
+        } else {
+            panic!("ShellVariables::get_status ? unset");
         }
     }
 
@@ -355,7 +371,12 @@ impl ShellVariables {
         Self::init_USER(&mut shell_variables);
         Self::init_last_status(&mut shell_variables);
         Self::init_PATH(&mut shell_variables);
+        Self::init_STATUS(&mut shell_variables);
         shell_variables
+    }
+
+    pub fn init_STATUS(shell_variables: &mut HashMap<String, String>) -> () {
+        shell_variables.insert("?".to_string(), "0".to_string());
     }
 
     pub fn init_PWD(shell_variables: &mut HashMap<String, String>) -> () {
@@ -385,7 +406,7 @@ impl ShellVariables {
     }
 
     pub fn init_PATH(shell_variables: &mut HashMap<String, String>) -> (){
-        shell_variables.insert("PATH".to_string(), String::new());
+        shell_variables.insert("PATH".to_string(), String::from("/bin"));
     }
 
     pub fn parse_rshrc(rshrc: String, intern_variables: &mut HashMap<String, String>) -> () {
@@ -438,14 +459,73 @@ impl ShellVariables {
         CommandExecuter::exec_instruction(instruction).await
     }
 
+    pub fn look_into_variables(&self, variables: &str) -> Option<&str> {
+        if let Some(var_value) = self.shell_variables.get(variables) {
+            return Some(var_value);
+        } else if let Some(var_value) = self.intern_variables.get(variables) {
+            return Some(var_value);
+        } else if let Some(var_value) = self.extern_variables.get(variables) {
+            return Some(var_value);
+        } else {
+            return None;
+        }
+    }
 
-
+    pub fn expand_variables(&self, tokens: Vec<Token>) -> Result<Vec<Token>,ShellError> {
+        tokens.into_iter().map(|token| -> Result<Token, ShellError>{
+            match token {
+                Token::NotOperator(TokenNotOperator::Variable(var_name)) => {
+                    if let Some(var_value) = self.look_into_variables(&var_name) {
+                        return Ok(Token::get_command(var_value.to_string()));
+                    } else {
+                        if var_name.is_empty() {return Ok(Token::get_command("$".to_string()));}
+                        return Err(ShellError::VarNotFound(var_name.to_string()));
+                    }
+                },
+                Token::NotOperator(TokenNotOperator::Inquote(in_quote)) => {
+                    let mut chars = in_quote.chars().peekable();
+                    let first_char = chars.next();
+                    if first_char == Some('\'') {
+                        return Ok(Token::NotOperator(TokenNotOperator::Inquote(in_quote)));
+                    } else {
+                        let mut new_quote = String::new();
+                        new_quote.push('"');
+                        while let Some(next_char) = chars.next() {
+                            if next_char == '$' && ( chars.peek() == Some(&' ') || chars.peek() == Some(&'\"'))  {
+                                new_quote.push('$');
+                            } else if next_char == '$' {
+                                let mut var = String::new();
+                                while let Some(&var_next_char) = chars.peek() {
+                                    if var_next_char == ' ' || Some(var_next_char) == first_char{
+                                        break;
+                                    } else {
+                                        var.push(var_next_char);
+                                    }
+                                    chars.next();
+                                }
+                                if let Some(var_value) = self.look_into_variables(&var) {
+                                    new_quote.push_str(var_value);
+                                } else {
+                                    if new_quote.is_empty() {return Ok(Token::get_command("$".to_string()));}
+                                    return Err(ShellError::VarNotFound(var));
+                                }
+                                
+                            } else {
+                                new_quote.push(next_char);
+                            }
+                        }
+                        return Ok(Token::NotOperator(TokenNotOperator::Inquote(new_quote)));
+                    }
+                    // On pourra faire des plus compliqués ensuite en fonction de si on a "" ou '' au début
+                    // si ' on fait rien 
+                    // si " on change"
+                },
+                _ => Ok(token),
+            }
+        }).collect()
+    }
 
 
 }
 
-pub mod InternalCommand {
-
-
-}
 

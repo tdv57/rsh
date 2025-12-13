@@ -93,6 +93,8 @@ pub mod handler {
                         if is_command(c) {
                             var.push(c);
                             chars.next();
+                        } else if c == ' ' || c=='$'{
+                            break;
                         } else {
                             break;
                         }
@@ -176,21 +178,6 @@ pub mod handler {
         }
 
         // A changer plus tard
-        pub fn expand_variables(tokens: Vec<Token>) -> Result<Vec<Token>,ShellError> {
-            Ok(tokens.into_iter().map(|token| {
-                match token {
-                    Token::NotOperator(TokenNotOperator::Variable(var_name)) => {
-                        // Résoudre la variable pour la remplacer
-                        Token::NotOperator(TokenNotOperator::Command(var_name.clone()))
-                    },
-                    Token::NotOperator(TokenNotOperator::Inquote(in_quote)) => {
-                        // On pourra faire des plus compliqués ensuite en fonction de si on a "" ou '' au début
-                        Token::NotOperator(TokenNotOperator::Inquote(in_quote))
-                    },
-                    _ => token,
-                }
-            }).collect())
-        }
 
 
         pub fn build_instructions(tokens: Vec<Token>) -> Vec<InstructionOrToken> {

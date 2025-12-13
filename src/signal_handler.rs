@@ -9,7 +9,7 @@ pub mod SignalHandler {
     use nix::libc::{kill};
     use nix::unistd::Pid;
     use crossterm::terminal::{enable_raw_mode, disable_raw_mode};
-    use crossterm::event::{self, Event, KeyCode, KeyEvent};
+    use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 
     use crate::shell_variables::{self, ShellVariables};
 
@@ -25,6 +25,7 @@ pub mod SignalHandler {
             }
             _ = tokio::signal::ctrl_c() => {
                 unsafe { kill(child_id, Signal::SIGINT as i32);}
+                print!("^C");
                 return 2;
             }
         }
@@ -46,7 +47,8 @@ pub mod SignalHandler {
         let mut current_command = String::new();
         let mut new_command = String::new();
         let mut history_index = 0;
-
+        let min_index = user.len();
+        let mut max_index = user.len();
         let mut stdout = std::io::stdout();
 
         print!("{}",user);
@@ -54,19 +56,33 @@ pub mod SignalHandler {
         loop {
             if event::poll(std::time::Duration::from_millis(10)).unwrap() {
                 match event::read().unwrap() {
-                    Event::Key(KeyEvent { code, .. }) => match code {
-                        KeyCode::Char(c) => {
+                    Event::Key(KeyEvent { code, modifiers, .. }) => match (code, modifiers) {
+                        (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+                            if current_command == "" {
+                                println!("^D");
+                                print!("\r\x1b[2D");
+                                stdout.flush().unwrap();
+                                disable_raw_mode().unwrap();
+                                std::process::exit(0);
+                            }
+                        }
+                        (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                            current_command.push_str("^C");
+                            print!("{}","^C");
+                            break;
+                        }
+                        (KeyCode::Char(c), _) => {
                             current_command.push(c);
                             if history_index==0 {new_command.push(c);}
                             print!("{}", c);
                             stdout.flush().unwrap();
                         }
-                        KeyCode::Enter => {
+                        (KeyCode::Enter, _) => {
                             current_command.push('\n');
                             print!("{}",'\n');
                             break;
                         }
-                        KeyCode::Backspace => {
+                        (KeyCode::Backspace, _) => {
                             if !current_command.is_empty() {
                                 if current_command.pop().is_some() {
                                     if history_index == 0 {
@@ -78,14 +94,14 @@ pub mod SignalHandler {
                             }
 
                         }
-                        KeyCode::Up  => {
+                        (KeyCode::Up, _)  => {
                             if history_index < history.len() {
                                 history_index += 1;
                                 current_command = history[history_index-1].clone();
                             }
                             print_new_command(&current_command, &user);
                         }
-                        KeyCode::Down => {
+                        (KeyCode::Down, _) => {
                             if history_index>0 {
                                 history_index-=1;
                                 if history_index == 0 {
@@ -96,19 +112,10 @@ pub mod SignalHandler {
                                 print_new_command(&current_command, &user);
                             } 
                         }
-                        KeyCode::Char('d') if event::KeyModifiers::CONTROL.contains(event::KeyModifiers::CONTROL) => {
-                            if current_command == "" {
-                                print!("^D");
-                                print!("\r");
-                                stdout.flush().unwrap();
-                                disable_raw_mode().unwrap();
-                                std::process::exit(0);
-                            }
+                        (KeyCode::Left, _) => {
+                            
                         }
-                        KeyCode::Char('c') if event::KeyModifiers::CONTROL.contains(event::KeyModifiers::CONTROL) => {
-                            current_command.push_str("^C");
-                            print!("{}","^C");
-                            break;
+                        (KeyCode::Right, _) => {
                         }
                         _ => {}
                     },

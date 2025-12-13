@@ -12,7 +12,7 @@ pub enum ShellError {
     UnknownError(String),
     CommandFirst,
     CommandAfterOperator,
-    EmptyVar,
+    VarNotFound(String),
 }
 
 impl Error for ShellError {}
@@ -27,7 +27,7 @@ impl Display for ShellError {
             Self::UnknownError(s) => format!("Unknown error append in :: {}", s),
             Self::CommandFirst => format!("instruction has started with an operator and not a command"),
             Self::CommandAfterOperator => format!("operator can't be followed by an operator"),
-            Self::EmptyVar => format!("encountered an empty var"),
+            Self::VarNotFound(s) => format!("variable ${} not found", s),
         };
         write!(f, "Error: {message}")
     }
@@ -46,7 +46,7 @@ impl ShellError {
                     Self::EmptyCommand => Err(4),
                     Self::CommandFirst => Err(5),
                     Self::CommandAfterOperator => Err(6),
-                    Self::EmptyVar => Err(7),
+                    Self::VarNotFound(_) => Err(7),
                     Self::UnknownError(_) => Err(255),
                     _ => {panic!("Une ShellError n'est pas gérée:: todo()!");},
                 };
