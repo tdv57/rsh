@@ -32,6 +32,10 @@ impl ShellInstance {
             Some(rsh) => rsh.clone()
         }
     }
+
+    pub async fn from_shell_variables(shell_variables: Arc<Mutex<ShellVariables>>) -> ShellInstance {
+        Self { shell_variables: shell_variables.clone()}
+    }
     // Mettre ça autre part dans un wrapper
     pub async fn handle_command(&mut self, command: String) -> Result<(), i32> {
         // Avoir une instance du shell
@@ -84,7 +88,7 @@ pub mod ShellRunning {
         let mut shell_instance = ShellInstance::from(shell_instance).await;
         println!("Voici la sortie de la commande !");
         loop {
-            
+            println!("Dans loop");
             let command = shell_instance.print_newline().await;  
             match shell_instance.get_command(&command).await {
                 Ok(_) => {

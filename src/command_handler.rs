@@ -361,6 +361,13 @@ pub mod handler {
         use tokio::io::{DuplexStream, duplex,AsyncRead, AsyncWrite, AsyncWriteExt};
         use std::process::Stdio;
         use crate::shell_variables::ShellVariables;
+
+        #[derive(Clone)]
+        pub enum IsSpawn {
+            SPAWN,
+            NOTSPAWN,
+        }
+
         pub async fn execute(shell_variables: Arc<Mutex<ShellVariables>>, instructions_or_tokens: Vec<InstructionOrToken>) -> i32 {
             and_or(shell_variables, instructions_or_tokens).await
         }
@@ -406,7 +413,7 @@ pub mod handler {
                         let instructions_tokens_in_background = std::mem::take(&mut instructions_or_tokens_to_execute);
                         let shell_variables_clone = shell_variables.clone();
                         task::spawn(async move {
-                            pipe(shell_variables_clone, instructions_tokens_in_background).await;
+                            pipe(shell_variables_clone, instructions_tokens_in_background, IsSpawn::SPAWN).await;
                         });
                     } else {
                         instructions_or_tokens_to_execute.push(InstructionOrToken::Token(token));
@@ -415,13 +422,13 @@ pub mod handler {
 
             }
             if !instructions_or_tokens_to_execute.is_empty() {
-                return pipe(shell_variables, instructions_or_tokens_to_execute).await;
+                return pipe(shell_variables, instructions_or_tokens_to_execute, IsSpawn::NOTSPAWN).await;
             }
             0
         }
 
         // Ici il faut que j'ai des instructions qui s'enchainent
-        pub async fn pipe(shell_variables: Arc<Mutex<ShellVariables>>, instructions_or_tokens: Vec<InstructionOrToken>) -> i32 {
+        pub async fn pipe(shell_variables: Arc<Mutex<ShellVariables>>, instructions_or_tokens: Vec<InstructionOrToken>, is_spawn: IsSpawn) -> i32 {
             let mut instructions_or_tokens_peekable = instructions_or_tokens.into_iter().peekable();
             let mut last_input_pipe: Option<DuplexStream> = None;
             let mut last_handle = None;
@@ -455,9 +462,10 @@ pub mod handler {
                     instruction.set_o(Output::Pipe(Box::new(output_pipe)));
                 }
                 let mut shell_variables_clone = shell_variables.clone();
+                let is_spawn_clone = is_spawn.clone();
                 let handle = tokio::spawn(async move {
                     let mut shell_variables_lock = shell_variables_clone.lock().await;
-                    shell_variables_lock.exec_instruction(instruction).await
+                    shell_variables_lock.exec_instruction(instruction, is_spawn_clone.clone()).await
                 });
 
                 last_handle = Some(handle);

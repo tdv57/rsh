@@ -10,15 +10,30 @@
 
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::Arc;
+use std::thread::spawn;
+use tokio::sync::Mutex;
 
 
+use crate::command_handler::handler::CommandExecuter::IsSpawn;
 use crate::instruction::*;
 use crate::command_handler::handler::CommandExecuter;
 use crate::output::*;
 use crate::input::*;
+use crate::shell_instance;
+use crate::shell_instance::ShellInstance;
+use crate::shell_variables;
+use std::pin::Pin;
+
 use std::path::{Path, PathBuf};
 use std::env;
-use nix::unistd::read;
+
+#[cfg(unix)]
+use nix::unistd::{fork, ForkResult, dup2};
+#[cfg(unix)]
+use nix::sys::wait::waitpid;
+use std::os::unix::io::AsRawFd;
+
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use once_cell::sync::Lazy;
@@ -235,8 +250,30 @@ impl ShellVariables {
 
     // Je dois envoyer les variables internes mais pas les externes 
     // Je dois rediriger l'output et l'input
-    pub async fn rsh(&mut self, mut instruction: Instruction) -> i32 {
-        todo!()
+    pub async fn rsh(&self, instruction: Instruction, is_spawn: IsSpawn) -> i32 {
+        let cmd = "/root/rust/projet_final/rust_shell/target/debug/rust_shell";
+
+        let mut command = tokio::process::Command::new(cmd);
+
+        match is_spawn {
+            IsSpawn::SPAWN => {
+                command.stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null());
+
+                let _child = command.spawn().expect("ShellVariables::rsh error to run child process mode SPAWN");
+                0 
+            },
+            IsSpawn::NOTSPAWN => {
+                let status = command.spawn()
+                                    .expect("ShellVariables::rsh error to run child process mode NOTSPAWN")
+                                    .wait()
+                                    .await
+                                    .expect("ShellVariables::rsh error to wait child process mode NOTSPAWN");
+
+                status.code().unwrap_or(1)
+            }
+        }
     }
 
     pub fn update_pwd(&mut self, new_path: PathBuf ) -> () {
@@ -370,7 +407,7 @@ impl ShellVariables {
     }
 
 
-    pub async fn exec_instruction(&mut self, instruction : Instruction) -> i32 {
+    pub async fn exec_instruction(&mut self, instruction : Instruction, is_spawn: IsSpawn) -> i32 {
         let cmd = instruction.get_command();
         let mut res = 0;
         if let Some(&shell_command) = SHELL_COMMANDS.get(cmd.as_str()) {
@@ -382,7 +419,7 @@ impl ShellVariables {
                 ShellCommands::EXPORT => self.export(instruction).await,
                 ShellCommands::HISTORY => self.history(instruction).await,
                 ShellCommands::PWD => self.pwd(instruction).await,
-                ShellCommands::RSH => self.rsh(instruction).await,
+                ShellCommands::RSH => self.rsh(instruction, is_spawn).await,
             };
         }
         CommandExecuter::exec_instruction(instruction).await
