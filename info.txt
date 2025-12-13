@@ -1,0 +1,21 @@
+> file (créer le fichier ou le reset)
+>> file (créer le fichier ou append rien(le laisse intact))
+
+<<DELIM
+taper les lignes
+DELIM
+
+Permet de taper plusieurs commandes à la suite
+
+() nouveau shell (nouvel environnement)
+space{space space}; shell courant (environnement courant)
+
+ajouter une étape où la redirection doit créer le fichier
+
+
+1400 brut ticket resto 50%
+appartement. avril mois auquel je commence.
+
+Prendre en compte le = (peut tout prendre et transforme en str)
+
+Les shells enfant bénéficient du mm environnement que leur parent
