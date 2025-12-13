@@ -45,7 +45,7 @@ pub mod handler {
             while let Some(char) = chars.next() {
                 if is_operator(char) {
                     if !command.trim().is_empty() {
-                    tokens.push(Token::get_command(command.clone()));
+                    tokens.push(Token::get_command(command.clone().trim().to_string()));
                     command.clear();
                     }
 
@@ -85,7 +85,7 @@ pub mod handler {
                 }
                 else if is_var(char) {
                     if !command.trim().is_empty() {
-                        tokens.push(Token::get_command(command.clone()));
+                        tokens.push(Token::get_command(command.clone().trim().to_string()));
                         command.clear();
                     }
 
@@ -101,12 +101,12 @@ pub mod handler {
                     if var.is_empty() {
                         tokens.push(Token::get_command("$".to_string()));
                     } else {
-                        tokens.push(Token::get_variable(var.clone()));
+                        tokens.push(Token::get_variable(var.clone().trim().to_string()));
                         var.clear();
                     }
                 } else if is_quote(char) {
                     if !command.trim().is_empty() {
-                        tokens.push(Token::get_command(command.clone()));
+                        tokens.push(Token::get_command(command.clone().trim().to_string()));
                         command.clear();
                     }
 
@@ -125,7 +125,7 @@ pub mod handler {
                         return Err(ShellError::QuoteNotClosed(inquote.clone()));
                     }
 
-                    tokens.push(Token::get_inquote(inquote.clone()));
+                    tokens.push(Token::get_inquote(inquote.clone().trim().to_string()));
                     inquote.clear();
 
                 }  else {
@@ -137,7 +137,7 @@ pub mod handler {
             //     return Err(ShellError::CommandAfterOperator);
             // }
             if !command.trim().is_empty() {
-                tokens.push(Token::get_command(command.clone()));
+                tokens.push(Token::get_command(command.clone().trim().to_string()));
                 command.clear();
             }
             Ok(tokens)
@@ -248,7 +248,7 @@ pub mod handler {
             fn check_getCommand_checkCommands_cmd2() {
                 let cmd2: String = "Bonjour | |".to_string();
 
-                let tok1_cmd2 = Token::get_command("Bonjour ".to_string());
+                let tok1_cmd2 = Token::get_command("Bonjour".to_string());
                 let tok2_cmd2 = Token::get_pipe();
                 let tok3_cmd2 = Token::get_pipe();
 
@@ -267,7 +267,7 @@ pub mod handler {
             fn check_getCommand_checkCommands_cmd3() {
                 let cmd3: String = "echo bonjour a tous > \"bonjour a tous\"".to_string();
 
-                let tok1_cmd3 = Token::get_command("echo bonjour a tous ".to_string());
+                let tok1_cmd3 = Token::get_command("echo bonjour a tous".to_string());
                 let tok2_cmd3 = Token::get_redirection_output_overwrite();
                 let tok3_cmd3 = Token::get_inquote("\"bonjour a tous\"".to_string());
 
@@ -287,7 +287,7 @@ pub mod handler {
 
                 let tok1_cmd4 =  Token::get_command("ls".to_string());
                 let tok2_cmd4 = Token::get_semi_colon();
-                let tok3_cmd4 = Token::get_command(" ls".to_string());
+                let tok3_cmd4 = Token::get_command("ls".to_string());
 
 
                 let mut tok4 = Vec::new();
@@ -309,7 +309,7 @@ pub mod handler {
                 let check_divided_tok4 = divide_tokens(check_tok4);
 
                 let tok1_cmd4 =  Token::get_command("ls".to_string());
-                let tok3_cmd4 = Token::get_command(" ls".to_string());
+                let tok3_cmd4 = Token::get_command("ls".to_string());
                 let mut divided_tok4_1_2 = Vec::new();
                 divided_tok4_1_2.push(tok1_cmd4);
                 let mut divided_tok4_2_2 = Vec::new();
