@@ -3,10 +3,15 @@
 // up arrow
 // down arrow
 pub mod SignalHandler {
+    use std::io::{self, Write};
     use tokio::process::Child;
     use nix::sys::signal::{Signal};
     use nix::libc::{kill};
     use nix::unistd::Pid;
+    use crossterm::terminal::{enable_raw_mode, disable_raw_mode};
+    use crossterm::event::{self, Event, KeyCode, KeyEvent};
+
+    use crate::shell_variables::{self, ShellVariables};
 
     pub async fn handle_ctrl_c(child: &mut Child) -> i32 {
         let child_id: i32 = child.id().expect("SignalHandler::handle_ctrl_c child process has no id") as i32;
@@ -23,5 +28,97 @@ pub mod SignalHandler {
                 return 2;
             }
         }
+    }
+
+    fn print_new_command(current_command: &str, user: &str) {
+        print!("\r\x1b[2K"); 
+        print!("{}{}", user, current_command);
+        std::io::stdout().flush().unwrap();
+    }
+
+    pub async fn handle_command(shell_variables: &mut ShellVariables, user: &str) -> String {
+        match enable_raw_mode() {
+            Ok(_) => (),
+            Err(_) => panic!("SignalHandle::handle_command issue while passing in raw mode"),
+        };
+
+        let history = shell_variables.get_history();
+        let mut current_command = String::new();
+        let mut new_command = String::new();
+        let mut history_index = 0;
+
+        let mut stdout = std::io::stdout();
+
+        print!("{}",user);
+        stdout.flush().unwrap();
+        loop {
+            if event::poll(std::time::Duration::from_millis(10)).unwrap() {
+                match event::read().unwrap() {
+                    Event::Key(KeyEvent { code, .. }) => match code {
+                        KeyCode::Char(c) => {
+                            current_command.push(c);
+                            if history_index==0 {new_command.push(c);}
+                            print!("{}", c);
+                            stdout.flush().unwrap();
+                        }
+                        KeyCode::Enter => {
+                            current_command.push('\n');
+                            print!("{}",'\n');
+                            break;
+                        }
+                        KeyCode::Backspace => {
+                            if !current_command.is_empty() {
+                                if current_command.pop().is_some() {
+                                    if history_index == 0 {
+                                        new_command.pop();
+                                    }
+                                    print!("\x08 \x08"); // efface le dernier caractère
+                                    stdout.flush().unwrap();
+                                }
+                            }
+
+                        }
+                        KeyCode::Up  => {
+                            if history_index < history.len() {
+                                history_index += 1;
+                                current_command = history[history_index-1].clone();
+                            }
+                            print_new_command(&current_command, &user);
+                        }
+                        KeyCode::Down => {
+                            if history_index>0 {
+                                history_index-=1;
+                                if history_index == 0 {
+                                    current_command = new_command.clone();
+                                } else {
+                                    current_command = history[history_index-1].clone();
+                                }
+                                print_new_command(&current_command, &user);
+                            } 
+                        }
+                        KeyCode::Char('d') if event::KeyModifiers::CONTROL.contains(event::KeyModifiers::CONTROL) => {
+                            if current_command == "" {
+                                print!("^D");
+                                print!("\r");
+                                stdout.flush().unwrap();
+                                disable_raw_mode().unwrap();
+                                std::process::exit(0);
+                            }
+                        }
+                        KeyCode::Char('c') if event::KeyModifiers::CONTROL.contains(event::KeyModifiers::CONTROL) => {
+                            current_command.push_str("^C");
+                            print!("{}","^C");
+                            break;
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+        }
+        print!("\r");
+        stdout.flush().unwrap();
+        disable_raw_mode().unwrap();
+        current_command
     }
 }

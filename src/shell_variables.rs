@@ -320,6 +320,19 @@ impl ShellVariables {
         }
     }
 
+    pub fn get_history(&self ) -> Vec<String> {
+        if let Some(history_str) = self.shell_variables.get("HISTORY") {
+            history_str
+                .lines()                  
+                .filter(|line| !line.is_empty()) 
+                .rev()
+                .map(|line| line.to_string())    
+                .collect()
+        } else {
+            panic!("ShellVariables::get_history HISTORY unset"); 
+        }
+    }
+
     pub async fn new(some_intern_variables : &Option<HashMap<String, String>>) -> Self {
         // Initialiser toutes les variables
         // Variables internes lire -> .rshrc

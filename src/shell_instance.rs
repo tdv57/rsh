@@ -3,6 +3,7 @@
 
 use crate::shell_instance;
 use crate::shell_variables;
+use crate::signal_handler::SignalHandler;
 use crate::token::*;
 use crate::input::*;
 use crate::output::*;
@@ -70,14 +71,14 @@ impl ShellInstance {
     }
 
     pub async fn print_newline(&self) -> String {
-        let shell_variables_locked = self.shell_variables.lock().await;
+        let mut shell_variables_locked = self.shell_variables.lock().await;
         let user = shell_variables_locked.get_user();
         let pwd=  shell_variables_locked.get_pwd();
         let mut user = String::from(user);
         user.push_str(":");
         user.push_str(pwd);
         user.push_str("# ");
-        read_line_sync(&user)
+        SignalHandler::handle_command(&mut shell_variables_locked, &user).await
     }
 }
 
@@ -88,7 +89,6 @@ pub mod ShellRunning {
         let mut shell_instance = ShellInstance::from(shell_instance).await;
         println!("Voici la sortie de la commande !");
         loop {
-            println!("Dans loop");
             let command = shell_instance.print_newline().await;  
             match shell_instance.get_command(&command).await {
                 Ok(_) => {
