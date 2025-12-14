@@ -494,8 +494,8 @@ pub mod handler {
         use tokio::io::{DuplexStream, duplex,AsyncRead, AsyncWrite, AsyncWriteExt};
         use std::process::Stdio;
         use crate::shell_variables::ShellVariables;
-
-        #[derive(Clone)]
+        use crossterm::terminal::{enable_raw_mode, disable_raw_mode};
+        #[derive(Clone, PartialEq)]
         pub enum IsSpawn {
             SPAWN,
             NOTSPAWN,
@@ -613,8 +613,7 @@ pub mod handler {
             0
         }
 
-        pub async fn exec_instruction(mut instruction: Instruction) -> i32 {
-
+        pub async fn exec_instruction(mut instruction: Instruction, is_spawn: IsSpawn) -> i32 {
             let input = instruction.take_i_put_stdin();
             let output = instruction.take_o_put_stdout();
             let cmd: String = instruction.get_command();
@@ -654,7 +653,13 @@ pub mod handler {
             }
 
             let mut child = child_cmd.spawn().unwrap();
-            handle_ctrl_c(&mut child).await
+
+            if is_spawn != IsSpawn::SPAWN {
+                handle_ctrl_c(&mut child).await
+            } else {
+                0
+            }
+            
         }
     }
 }

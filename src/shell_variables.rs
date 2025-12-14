@@ -506,7 +506,7 @@ impl ShellVariables {
             Err(status) => return status,
         };
         instruction.set_command(cmd);
-        CommandExecuter::exec_instruction(instruction).await
+        CommandExecuter::exec_instruction(instruction,is_spawn).await
     }
 
     pub fn look_into_variables(&self, variables: &str) -> Option<&str> {

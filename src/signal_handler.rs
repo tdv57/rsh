@@ -38,10 +38,8 @@ pub mod SignalHandler {
     }
 
     pub async fn handle_command(shell_variables: &mut ShellVariables, user: &str) -> String {
-        match enable_raw_mode() {
-            Ok(_) => (),
-            Err(_) => panic!("SignalHandle::handle_command issue while passing in raw mode"),
-        };
+        
+
 
         let history = shell_variables.get_history();
         let mut current_command = String::new();
@@ -50,7 +48,11 @@ pub mod SignalHandler {
         let min_index = user.len();
         let mut max_index = user.len();
         let mut stdout = std::io::stdout();
-
+        stdout.flush().unwrap();
+        match enable_raw_mode() {
+            Ok(_) => (),
+            Err(_) => panic!("SignalHandle::handle_command issue while passing in raw mode"),
+        };
         print!("{}",user);
         stdout.flush().unwrap();
         loop {
@@ -126,6 +128,7 @@ pub mod SignalHandler {
         print!("\r");
         stdout.flush().unwrap();
         disable_raw_mode().unwrap();
+        
         current_command
     }
 }
