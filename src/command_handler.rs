@@ -270,7 +270,6 @@ pub mod handler {
         pub fn expand_command(tokens: Vec<Token>) -> Vec<Token> {
             let mut result = Vec::new();
             for token in tokens {
-                println!("{:?}", token);
                 match token {
                     Token::NotOperator(TokenNotOperator::Command(var_name)) => {
                         if has_regex_expression(&var_name) {
@@ -323,7 +322,6 @@ pub mod handler {
 
                     token => result.push(token),
                 }
-                println!("{:?}", result);
             }
             result
         }
