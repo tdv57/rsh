@@ -9,6 +9,7 @@
 // rsh
 
 use std::collections::HashMap;
+use std::env::var;
 use std::env::vars_os;
 use std::hash::Hash;
 use std::sync::Arc;
@@ -17,6 +18,7 @@ use tokio::sync::Mutex;
 
 
 use crate::command_handler::handler::CommandExecuter::IsSpawn;
+use crate::instruction;
 use crate::instruction::*;
 use crate::command_handler::handler::CommandExecuter;
 use crate::output::*;
@@ -119,7 +121,7 @@ impl ShellVariables {
             return 1;
         }
         let path_name = if instruction.get_len_args() == 0 {
-            match self.intern_variables.get("HOME") {
+            match self.shell_variables.get("HOME") {
                 Some(home) => home, 
                 None => {println!("cd: $HOME not set"); return 1;}
             }
@@ -370,13 +372,19 @@ impl ShellVariables {
         Self::init_SHELL(&mut shell_variables);
         Self::init_USER(&mut shell_variables);
         Self::init_last_status(&mut shell_variables);
-        Self::init_PATH(&mut shell_variables);
         Self::init_STATUS(&mut shell_variables);
+        Self::init_HOME(&mut shell_variables);
         shell_variables
     }
 
     pub fn init_STATUS(shell_variables: &mut HashMap<String, String>) -> () {
         shell_variables.insert("?".to_string(), "0".to_string());
+    }
+
+    pub fn init_HOME(shell_variables: &mut HashMap<String, String>) -> () {
+        if let Ok(home) = std::env::var("HOME") {
+            shell_variables.insert("HOME".to_string(), home.clone());
+        }
     }
 
     pub fn init_PWD(shell_variables: &mut HashMap<String, String>) -> () {
@@ -389,12 +397,12 @@ impl ShellVariables {
         shell_variables.insert("HISTORY".to_string(),String::new());
     }
 
-    pub fn init_USER(shell_variables: &mut HashMap<String, String>) -> () {
+    pub fn init_USER(intern_variables: &mut HashMap<String, String>) -> () {
         let user = match std::env::var("USER") {
             Ok(u) => u,
             Err(u) => "Unknown".to_string(),
         };
-        shell_variables.insert("USER".to_string(), user);
+        intern_variables.insert("USER".to_string(), user);
     }
 
     pub fn init_SHELL(shell_variables: &mut HashMap<String, String>) -> () {
@@ -405,8 +413,8 @@ impl ShellVariables {
         shell_variables.insert("?".to_string(), "0".to_string());
     }
 
-    pub fn init_PATH(shell_variables: &mut HashMap<String, String>) -> (){
-        shell_variables.insert("PATH".to_string(), String::from("/bin"));
+    pub fn init_PATH(intern_variables: &mut HashMap<String, String>) -> (){
+        intern_variables.insert("PATH".to_string(), String::from("/bin:"));
     }
 
     pub fn parse_rshrc(rshrc: String, intern_variables: &mut HashMap<String, String>) -> () {
@@ -441,8 +449,44 @@ impl ShellVariables {
     }
 
 
+    pub fn look_for_path(&self, cmd: &str) -> Result<String, ShellError> {
+        if !cmd.contains('/') {
+            let PATH = match self.look_into_variables("PATH") {
+                Some(path) => path,
+                None => panic!("ShellVariables::look_for_path PATH unset"),
+            };
+            for dir in PATH.split(':') {
+                let full_path = Path::new(dir).join(cmd);
+                if full_path.is_file() {
+                    let mut response = dir.to_string();
+                    response.push('/');
+                    response.push_str(cmd);
+                    return Ok(response);
+                }
+            }
+            let mut response = "command ".to_string();
+            response.push_str(cmd);
+            response.push_str(" not found");
+            Err(ShellError::CommandError(response))
+        } else {
+            let full_path = Path::new(cmd);
+            if full_path.is_file() {
+                return Ok(cmd.to_string());
+            } else {
+                let mut response = "command ".to_string();
+                response.push_str(cmd);
+                response.push_str(" not found");
+                Err(ShellError::CommandError(response))
+            }
+        }
+
+
+    }
+
     pub async fn exec_instruction(&mut self, instruction : Instruction, is_spawn: IsSpawn) -> i32 {
         let cmd = instruction.get_command();
+
+
         let mut res = 0;
         if let Some(&shell_command) = SHELL_COMMANDS.get(cmd.as_str()) {
             return match shell_command {
@@ -456,6 +500,13 @@ impl ShellVariables {
                 ShellCommands::RSH => self.rsh(instruction, is_spawn).await,
             };
         }
+        
+        let mut instruction = instruction;
+        let cmd: String = match ShellError::handle_shell_error(self.look_for_path(&cmd)) {
+            Ok(cmd) => cmd,
+            Err(status) => return status,
+        };
+        instruction.set_command(cmd);
         CommandExecuter::exec_instruction(instruction).await
     }
 
@@ -471,15 +522,54 @@ impl ShellVariables {
         }
     }
 
+    pub fn push_in_var_or(&self, to_push_in: &mut String, value_to_push: String) ->  Result<(), ShellError> {
+        if value_to_push.is_empty() {
+            to_push_in.push('$');
+            return Ok(());
+        } else {
+            match self.look_into_variables(&value_to_push) {
+                Some(value) => {
+                    to_push_in.push_str(value); 
+                    return Ok(());
+                },
+                None => {
+                    return Err(ShellError::VarNotFound(value_to_push));
+                },
+            }
+        }
+    }
+
+    pub fn parse_variables<'a>(&self, var_name: &mut std::iter::Peekable<std::str::Chars<'a>>, quote: Option<char>) -> Result<String,ShellError> {
+        let mut var_value = String::new();
+        let mut current_var_value = String::new();
+        while let Some(&next_char) = var_name.peek() {
+            if Some(next_char) == quote || next_char == ' ' {
+                self.push_in_var_or(&mut var_value, current_var_value)?;
+                current_var_value = String::new();
+                break;
+            } else if next_char == '$' {
+                self.push_in_var_or(&mut var_value, current_var_value)?;
+                current_var_value = String::new();
+            } else {
+                current_var_value.push(next_char);
+            }
+            var_name.next();
+        }
+        if current_var_value.is_empty() {
+            var_value.push('$');
+        } else {
+            self.push_in_var_or(&mut var_value, current_var_value)?;
+        }
+        Ok(var_value)
+    }
     pub fn expand_variables(&self, tokens: Vec<Token>) -> Result<Vec<Token>,ShellError> {
         tokens.into_iter().map(|token| -> Result<Token, ShellError>{
             match token {
                 Token::NotOperator(TokenNotOperator::Variable(var_name)) => {
-                    if let Some(var_value) = self.look_into_variables(&var_name) {
-                        return Ok(Token::get_command(var_value.to_string()));
-                    } else {
-                        if var_name.is_empty() {return Ok(Token::get_command("$".to_string()));}
-                        return Err(ShellError::VarNotFound(var_name.to_string()));
+                    let mut chars = var_name.chars().peekable();
+                    match self.parse_variables(&mut chars, None) {
+                        Ok(var_value) => {return Ok(Token::get_command(var_value.to_string()));},
+                        Err(e) => return Err(e),
                     }
                 },
                 Token::NotOperator(TokenNotOperator::Inquote(in_quote)) => {
@@ -491,25 +581,9 @@ impl ShellVariables {
                         let mut new_quote = String::new();
                         new_quote.push('"');
                         while let Some(next_char) = chars.next() {
-                            if next_char == '$' && ( chars.peek() == Some(&' ') || chars.peek() == Some(&'\"'))  {
-                                new_quote.push('$');
-                            } else if next_char == '$' {
-                                let mut var = String::new();
-                                while let Some(&var_next_char) = chars.peek() {
-                                    if var_next_char == ' ' || Some(var_next_char) == first_char{
-                                        break;
-                                    } else {
-                                        var.push(var_next_char);
-                                    }
-                                    chars.next();
-                                }
-                                if let Some(var_value) = self.look_into_variables(&var) {
-                                    new_quote.push_str(var_value);
-                                } else {
-                                    if new_quote.is_empty() {return Ok(Token::get_command("$".to_string()));}
-                                    return Err(ShellError::VarNotFound(var));
-                                }
-                                
+                            if next_char == '$' {
+                                let var_value = self.parse_variables(&mut chars, Some('"'))?;
+                                new_quote.push_str(&var_value);
                             } else {
                                 new_quote.push(next_char);
                             }

@@ -90,10 +90,10 @@ pub mod handler {
                     }
 
                     while let Some(&c) = chars.peek() {
-                        if is_command(c) {
+                        if is_command(c) || c=='$' {
                             var.push(c);
                             chars.next();
-                        } else if c == ' ' || c=='$'{
+                        } else if c == ' '{
                             break;
                         } else {
                             break;
@@ -131,7 +131,15 @@ pub mod handler {
                     inquote.clear();
 
                 }  else {
-                    command.push(char);
+                    if char == ' ' {
+                        if !command.trim().is_empty() {
+                            tokens.push(Token::get_command(command.clone().trim().to_string()));
+                            command.clear();
+                        }
+                    } else {
+                        command.push(char);
+                    }                    
+                    
                 }
             }
             // Erreur je peux avoir un opérateur à la fin
