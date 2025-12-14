@@ -486,7 +486,6 @@ impl ShellVariables {
     pub async fn exec_instruction(&mut self, instruction : Instruction, is_spawn: IsSpawn) -> i32 {
         let cmd = instruction.get_command();
 
-
         let mut res = 0;
         if let Some(&shell_command) = SHELL_COMMANDS.get(cmd.as_str()) {
             return match shell_command {

@@ -24,9 +24,6 @@ impl Instruction {
         if command.is_empty() {
             return None;
         }
-        let mut args : Vec<String> = command.split_whitespace().map(|s| s.to_string()).collect();
-        let command = args.remove(0);
-        self.args = args;
         self.command = command;
         Some(())
     }
