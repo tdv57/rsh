@@ -49,7 +49,8 @@ impl ShellInstance {
         for divided_token in divided_tokens {
             let expanded_token = {
                 let shell_variables_locked = self.shell_variables.lock().await;
-                ShellError::handle_shell_error(shell_variables_locked.expand_variables(divided_token))?
+                let tokens = ShellError::handle_shell_error(shell_variables_locked.expand_variables(divided_token))?;
+                CommandParser::expand_command(tokens)
             };
             let instructions_or_tokens = CommandParser::build_instructions(expanded_token);
             status = CommandExecuter::execute(self.shell_variables.clone(), instructions_or_tokens).await;

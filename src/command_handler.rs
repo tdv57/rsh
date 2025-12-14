@@ -19,6 +19,8 @@ pub mod handler {
 
     pub mod CommandParser {
 
+        use nix::libc::int32_t;
+
         use crate::shell_error::*;
         use crate::token::*;
         use crate::input::*;
@@ -185,8 +187,146 @@ pub mod handler {
             tokens_divided
         }
 
-        // A changer plus tard
+        pub fn match_braces(to_match: &str) -> Vec<String> {
+            if let Some(start) = to_match.find('{') {
+                if let Some(end) = to_match[start..].find('}') {
+                    let end = start + end;
+                    let before = &to_match[..start];
+                    let after = &to_match[end + 1..];
+                    let inside = &to_match[start + 1..end];
 
+                    let mut possible_targets: Vec<String> = Vec::new();
+                    for in_braces in inside.split(',') {
+                        let mut in_in_braces = String::new();
+                        in_in_braces.push_str(before);
+                        in_in_braces.push_str(in_braces);
+                        in_in_braces.push_str(after);
+                        for possible_target in match_braces(&in_in_braces) {
+                            possible_targets.push(possible_target.to_string());
+                        }
+                    }
+                    return possible_targets;
+                }
+                return vec![to_match.to_string()];
+            }
+            vec![to_match.to_string()]
+        }
+
+        pub fn match_brackets(to_match: &[char], target: &[char]) -> Option<usize> {
+            if target.is_empty() {return None;}
+            let mut i = 0;
+            while i < to_match.len() && to_match[i] != ']' {
+                i+=1;
+            }
+
+            if i == to_match.len() {return None;}
+
+            let in_brackets = &to_match[1..i];
+            if in_brackets.contains(&target[0]) {
+                Some(i + 1) // nombre de chars consommés dans le pattern
+            } else {
+                None
+            }
+        }
+        // A changer plus tard
+        pub fn match_regex_expression(to_match: &[char], target: &[char]) -> bool {
+            match(to_match.first(), target.first()) {
+                (None, None) => true,
+                (None, Some(_)) => false,
+                (Some('*'), _) => {
+                    match_regex_expression(&to_match[1..], target) ||
+                    (!target.is_empty() && match_regex_expression(to_match, &target[1..]))
+                },
+                (Some('?'), Some(_)) => {
+                    if target.is_empty() {return false;}
+                    match_regex_expression(&to_match[1..], &target[1..])
+                },
+                (Some('['), _) => {
+                    if let Some(index) = match_brackets(to_match, target) {
+                        return match_regex_expression(&to_match[index..], &target[1..]);
+                    } else {
+                        if !target.is_empty() && target[0] == to_match[0] {
+                            return match_regex_expression(&to_match[1..], &target[1..]);
+                        } else {
+                            return false;
+                        }
+                    }
+                },
+                (Some(to_match_char), Some(target_char)) => {
+                    if to_match_char == target_char {
+                        return match_regex_expression(&to_match[1..], &target[1..]);
+                    } else {
+                        return false;
+                    }
+                },
+                _ => false,
+            }
+        }
+
+        pub fn has_regex_expression(to_match: &str) -> bool {
+            to_match.contains(['[', '{', '*', '?'])
+        }
+
+        pub fn expand_command(tokens: Vec<Token>) -> Vec<Token> {
+            let mut result = Vec::new();
+            for token in tokens {
+                println!("{:?}", token);
+                match token {
+                    Token::NotOperator(TokenNotOperator::Command(var_name)) => {
+                        if has_regex_expression(&var_name) {
+                            let partial_paths: Vec<&str> = var_name.split('/').filter(|p| !p.is_empty()).collect();
+                            let mut candidates = vec![std::path::PathBuf::from(".")];
+                            
+                            for partial_path in partial_paths {
+                                let mut next_candidates = Vec::new();
+                                let possible_match = match_braces(partial_path);
+                                for candidate in &candidates {
+                                    for to_match in &possible_match {
+                                        if has_regex_expression(&to_match) {
+                                            let mut entries = match std::fs::read_dir(candidate) {
+                                                Ok(e) => e,
+                                                Err(_) => continue,
+                                            };
+
+                                            for entry in entries {
+                                                    let entry = match entry {
+                                                        Ok(e) => e,
+                                                        Err(_) => continue,
+                                                    };
+                                                    let name = entry.file_name();
+                                                    let target = match name.to_str(){
+                                                        Some(name) => name,
+                                                        None => continue,
+                                                    };
+                                                    if match_regex_expression(&to_match.chars().collect::<Vec<_>>(),&target.chars().collect::<Vec<_>>(),){
+                                                        next_candidates.push(candidate.join(target));
+                                                    } 
+                                                    
+
+                                                }
+                                            } else {
+                                                next_candidates.push(candidate.join(to_match));
+                                            }
+                                    }
+                                }
+                                candidates = next_candidates;
+                            }
+                            for candidate in candidates {
+                                let candidate_str = candidate.to_string_lossy().into_owned();
+                                result.push(Token::get_command(candidate_str));
+                            }
+                        } else {
+                            result.push(Token::NotOperator(TokenNotOperator::Command(var_name)))
+                        }
+                        
+                    },
+
+                    token => result.push(token),
+                }
+                println!("{:?}", result);
+            }
+            result
+        }
 
         pub fn build_instructions(tokens: Vec<Token>) -> Vec<InstructionOrToken> {
             // Je dois parcourir les tokens soit c'est une commande et donc je dois merge
