@@ -488,16 +488,30 @@ impl ShellVariables {
 
         let mut res = 0;
         if let Some(&shell_command) = SHELL_COMMANDS.get(cmd.as_str()) {
-            return match shell_command {
-                
-                ShellCommands::CD => self.cd(instruction).await,
-                ShellCommands::ECHO => self.echo(instruction).await,
-                ShellCommands::EXIT => self.exit(instruction).await,
-                ShellCommands::EXPORT => self.export(instruction).await,
-                ShellCommands::HISTORY => self.history(instruction).await,
-                ShellCommands::PWD => self.pwd(instruction).await,
-                ShellCommands::RSH => self.rsh(instruction, is_spawn).await,
-            };
+            if is_spawn == IsSpawn::NOTSPAWN {
+                return match shell_command {
+                    
+                    ShellCommands::CD => self.cd(instruction).await,
+                    ShellCommands::ECHO => self.echo(instruction).await,
+                    ShellCommands::EXIT => self.exit(instruction).await,
+                    ShellCommands::EXPORT => self.export(instruction).await,
+                    ShellCommands::HISTORY => self.history(instruction).await,
+                    ShellCommands::PWD => self.pwd(instruction).await,
+                    ShellCommands::RSH => self.rsh(instruction, is_spawn).await,
+                };
+            } else {
+                return match shell_command {
+                    
+                    ShellCommands::CD => {self.cd(instruction); 0},
+                    ShellCommands::ECHO => {self.echo(instruction); 0},
+                    ShellCommands::EXIT => {self.exit(instruction); 0},
+                    ShellCommands::EXPORT => {self.export(instruction); 0},
+                    ShellCommands::HISTORY => {self.history(instruction); 0},
+                    ShellCommands::PWD => {self.pwd(instruction); 0},
+                    ShellCommands::RSH => {self.rsh(instruction, is_spawn); 0},
+                };
+            }
+
         }
         
         let mut instruction = instruction;
