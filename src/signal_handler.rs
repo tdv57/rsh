@@ -99,6 +99,49 @@ pub mod SignalHandler {
             }
         }
 
+        pub fn predict(&mut self, shell_variables: &ShellVariables) -> () {
+            let mut index = self.index;
+            let bytes = self.get().as_bytes();
+
+            let mut has_meet_white_space=false;
+            let mut start_index = 0;
+            let mut is_command = true;
+            while index > 0 {
+                let c = bytes[index - 1];
+                if c == b';' {
+                    start_index = index;
+                    break;
+                } else if c == b' '{
+                  has_meet_white_space = true;
+                  start_index=index;
+                } else {
+                    if has_meet_white_space == true {
+                        is_command = false;
+                        break;
+                    }
+                }
+                index -= 1;
+            }
+
+            let cmd_or_arg = &self.get()[start_index..self.index]; 
+            let mut cmd_or_arg = cmd_or_arg.to_string();
+
+            let mut candidates = match is_command {
+                true => {
+                    shell_variables.look_for_path_starting_with(&cmd_or_arg)
+                }
+                false => {
+                    shell_variables.look_for_file_or_dir_starting_with(&cmd_or_arg)
+                }
+            };
+            if candidates.len() == 1 {
+                while(self.index > start_index) {
+                    self.remove();
+                }
+                self.insert_str(candidates.get(0).unwrap());
+            }
+        }
+
 
         pub fn set(&mut self, c: String) -> () {
             self.index = c.len();
@@ -184,6 +227,10 @@ pub mod SignalHandler {
                         }
                         (KeyCode::Right, _) => {
                             current_command.move_right();
+                            print_new_command(&current_command, user);
+                        }
+                        (KeyCode::Tab, _) => {
+                            current_command.predict(shell_variables);
                             print_new_command(&current_command, user);
                         }
                         _ => {}

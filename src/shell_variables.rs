@@ -448,6 +448,66 @@ impl ShellVariables {
         intern_variables
     }
 
+    pub fn look_for_file_or_dir_starting_with(&self, cmd: &str) -> Vec<String> {
+        let mut candidates = Vec::new();
+        let mut current_dir = PathBuf::new();
+        let (current_dir, file_or_dir) = if cmd.contains('/') {
+            let mut current_dir_str = String::new();
+            let partial_path: Vec<&str> = cmd.split('/').collect();
+            for path in &partial_path[..partial_path.len()-1] {
+                current_dir_str.push_str(path);
+                current_dir_str.push('/');
+            }
+            current_dir = PathBuf::from(current_dir_str);
+            (current_dir, partial_path[partial_path.len()-1])
+
+        } else {
+            current_dir = PathBuf::from(".");
+            (current_dir, cmd)
+        };
+        
+        if let Ok(entries) = std::fs::read_dir(current_dir.clone()) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with(file_or_dir) {
+                        let path = current_dir.join(name);
+                        let candidate = if let Ok(file_type) = entry.file_type() {
+                                if file_type.is_dir() {
+                                    format!("{}/", path.to_string_lossy()) 
+                                } else {
+                                    path.to_string_lossy().to_string()
+                                }
+                        } else {
+                            path.to_string_lossy().to_string()
+                        };
+                        candidates.push(candidate);
+                    }
+                }
+            }
+        }
+        candidates
+    }
+
+    pub fn look_for_path_starting_with(&self, cmd: &str) -> Vec<String>{
+        let mut candidates = Vec::new();
+        let PATH = match self.look_into_variables("PATH") {
+                Some(path) => path,
+                None => panic!("ShellVariables::look_for_path PATH unset"),
+            };
+        for dir in PATH.split(':') {
+            let dir = Path::new(dir);
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if name.starts_with(cmd) {
+                            candidates.push(name.to_string())
+                        }
+                    }
+                }
+            }
+        }
+        candidates
+    }
 
     pub fn look_for_path(&self, cmd: &str) -> Result<String, ShellError> {
         if !cmd.contains('/') {
