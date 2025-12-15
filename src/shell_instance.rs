@@ -90,7 +90,7 @@ pub mod ShellRunning {
 
     pub async fn run(shell_instance: Option<&ShellInstance>) -> std::io::Result<()>{
         let mut shell_instance = ShellInstance::from(shell_instance).await;
-        println!("Voici la sortie de la commande !");
+        //println!("Voici la sortie de la commande !");
         loop {
             let command = shell_instance.print_newline().await;  
             match shell_instance.get_command(&command).await {
@@ -100,7 +100,7 @@ pub mod ShellRunning {
                 Err(e) => {
                     let mut shell_variables_locked = shell_instance.shell_variables.lock().await;
                     shell_variables_locked.update_status(e);
-                    eprintln!("exit code: {:?}", shell_variables_locked.get_status());
+                    //eprintln!("exit code: {:?}", shell_variables_locked.get_status());
                 }
             }
         }

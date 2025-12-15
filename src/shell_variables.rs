@@ -429,7 +429,7 @@ impl ShellVariables {
             Ok(home) => home,
         };
         home.push_str(&String::from("/.rshrc"));
-        println!("{}", home);
+        //println!("{}", home);
         let file = OpenOptions::new()
                     .read(true)
                     .write(true)   
