@@ -228,7 +228,7 @@ impl TokenRedirection {
                 OpenOptions::new()
                     .write(true)
                     .truncate(false)
-                    .create(true)   // crée le fichier si absent
+                    .create(true)  
                     .open(&file)?;
             }, 
             TokenRedirection::RedirectionOutputOverwrite => {
@@ -236,7 +236,7 @@ impl TokenRedirection {
                 OpenOptions::new()
                     .write(true)
                     .truncate(true)
-                    .create(true)   // crée le fichier si absent
+                    .create(true)   
                     .open(&file)?;
             },
         }

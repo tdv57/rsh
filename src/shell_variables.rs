@@ -253,7 +253,7 @@ impl ShellVariables {
     // Je dois envoyer les variables internes mais pas les externes 
     // Je dois rediriger l'output et l'input
     pub async fn rsh(&self, instruction: &mut Instruction, is_spawn: IsSpawn) -> i32 {
-        let cmd = "/root/rust/projet_final/rust_shell/target/debug/rust_shell";
+        let cmd = "/bin/rust_shell";
 
         let mut command = tokio::process::Command::new(cmd);
 

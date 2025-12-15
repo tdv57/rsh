@@ -23,7 +23,7 @@ pub struct ShellInstance {
 impl ShellInstance {
 
     pub async fn new() -> Self {
-        let shell_variables = Arc::new(Mutex::new(ShellVariables::new(&None).await)); // crée ton struct normalement
+        let shell_variables = Arc::new(Mutex::new(ShellVariables::new(&None).await)); 
         Self { shell_variables }
     }
 
@@ -37,7 +37,6 @@ impl ShellInstance {
     pub async fn from_shell_variables(shell_variables: Arc<Mutex<ShellVariables>>) -> ShellInstance {
         Self { shell_variables: shell_variables.clone()}
     }
-    // Mettre ça autre part dans un wrapper
     pub async fn handle_command(&mut self, command: String) -> Result<(), i32> {
         // Avoir une instance du shell
         if command.is_empty() {return Err(0);};

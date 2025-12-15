@@ -223,7 +223,7 @@ pub mod handler {
 
             let in_brackets = &to_match[1..i];
             if in_brackets.contains(&target[0]) {
-                Some(i + 1) // nombre de chars consommés dans le pattern
+                Some(i + 1)
             } else {
                 None
             }
