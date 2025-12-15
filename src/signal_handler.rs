@@ -10,7 +10,7 @@ pub mod SignalHandler {
     use nix::unistd::Pid;
     use crossterm::terminal::{enable_raw_mode, disable_raw_mode};
     use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
-
+    use std::collections::HashSet;
     use crate::shell_variables::{self, ShellVariables};
 
     pub async fn handle_ctrl_c(child: &mut Child) -> i32 {
@@ -134,11 +134,35 @@ pub mod SignalHandler {
                     shell_variables.look_for_file_or_dir_starting_with(&cmd_or_arg)
                 }
             };
+            let candidates: HashSet<String> = candidates.into_iter().collect();
             if candidates.len() == 1 {
                 while(self.index > start_index) {
                     self.remove();
                 }
-                self.insert_str(candidates.get(0).unwrap());
+                if let Some(candidate) = candidates.iter().next() {
+                    self.insert_str(candidate);
+                }
+            } else if candidates.len() > 1 {
+                let mut candidates = candidates.iter();
+                let mut commun_prefix = candidates.next().unwrap().to_string();
+                for candidate in candidates.clone() {
+                    let mut new_commun_prefix = String::new();
+                    for (a, b) in commun_prefix.chars().zip(candidate.chars()) {
+                        if a == b {
+                          new_commun_prefix.push(a);
+                        } else {
+                          break;
+                        }
+                    }
+
+                    commun_prefix = new_commun_prefix;
+                } 
+                if commun_prefix.len() > cmd_or_arg.len() {
+                    while(self.index > start_index) {
+                        self.remove();
+                    }
+                    self.insert_str(&commun_prefix);
+                } 
             }
         }
 
