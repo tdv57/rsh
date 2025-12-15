@@ -21,10 +21,5 @@ pub mod signal_handler;
 
 #[tokio::main]
 async fn main() -> () {
-//     // peut être mettre dans un objet
-//     // Créer un objet parser qui prend la ligne et la parse;
     ShellRunning::run(None).await;
-    
-
-
 }

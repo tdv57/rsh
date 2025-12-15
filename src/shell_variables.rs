@@ -432,7 +432,7 @@ impl ShellVariables {
         println!("{}", home);
         let file = OpenOptions::new()
                     .read(true)
-                    .write(true)   // nécessaire avec create(true)
+                    .write(true)   
                     .create(true)
                     .open(home)
                     .await
@@ -573,6 +573,7 @@ impl ShellVariables {
         let mut instruction = instruction;
         let cmd: String = ShellError::handle_shell_error(self.look_for_path(&cmd))?;
         instruction.set_command(cmd);
+
         Ok(CommandExecuter::exec_instruction(instruction,is_spawn).await)
     }
 
