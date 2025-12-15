@@ -76,7 +76,7 @@ pub struct ShellVariables {
 }
 
 impl ShellVariables {
-    pub async fn echo(&self, instruction: Instruction) -> i32 {
+    pub async fn echo(&self, instruction: &mut Instruction) -> i32 {
         // Je dois respecter l'option -n 
         // Une fois que c'est fait j'écris et je lis là c'est demandé
         // Si j'ai stdin je lis args et j'écris dans stdout
@@ -85,7 +85,7 @@ impl ShellVariables {
         let mut buffer = String::new();
         
         match instruction.get_i(){
-            &Input::File(_) | &Input::Pipe(_) => {
+            &Input::File(_) | &Input::Pipe => {
                 buffer.push('\n');
             }, 
             &Input::Stdin => {
@@ -115,7 +115,7 @@ impl ShellVariables {
     }
 
 
-    pub async fn cd(&mut self, instruction: Instruction) -> i32 {
+    pub async fn cd(&mut self, instruction: &mut Instruction) -> i32 {
         if instruction.get_len_args() > 1 {
             println!("cd needs 0 or 1 arguments found: {} arguments", instruction.get_len_args());
             return 1;
@@ -148,11 +148,11 @@ impl ShellVariables {
     }
 
 
-    pub async fn exit(&mut self, instruction: Instruction) -> i32 {
+    pub async fn exit(&mut self, instruction: &mut Instruction) -> i32 {
         std::process::exit(0);
     }
 
-    pub async fn pwd(&mut self, mut instruction: Instruction) -> i32 {
+    pub async fn pwd(&mut self, mut instruction: &mut Instruction) -> i32 {
         if let Some(pwd) = self.shell_variables.get("PWD") {
             match instruction.take_o_put_stdout() {
                 Output::FileAppend(file) => {
@@ -173,9 +173,7 @@ impl ShellVariables {
                                                      .expect("ShellVariable::pwd Output::OverWrite impossible d'ouvrir le fichier");
                     file_open.write_all(pwd.as_bytes()).await.expect("ShellVariable::pwd Output::OverWrite impossible d'écrire");
                 },
-                Output::Pipe(mut pipe) => {
-                    pipe.write_all(pwd.as_bytes()).await.expect("ShellVariable::pwd Output::Pipe impossible d'écrire dans le pipe");
-                },
+                Output::Pipe => (),
                 Output::Stdout => {
                     println!("{}", pwd);
                 }
@@ -185,7 +183,7 @@ impl ShellVariables {
         }
         0
     }
-    pub async fn export(&mut self, instruction: Instruction) -> i32 {
+    pub async fn export(&mut self, instruction: &mut Instruction) -> i32 {
         // On va faire un export différent en gros le premier = est considéré comme affectation
         // ensuite il faut rencontrer un \ pour terminer l'affectation
         // 
@@ -220,7 +218,7 @@ impl ShellVariables {
         }
         0
     }
-    pub async fn history(&mut self, mut instruction: Instruction) -> i32 {
+    pub async fn history(&mut self, mut instruction: &mut Instruction) -> i32 {
         if let Some(pwd) = self.shell_variables.get("HISTORY") {
             match instruction.take_o_put_stdout() {
                 Output::FileAppend(file) => {
@@ -241,9 +239,7 @@ impl ShellVariables {
                                                      .expect("ShellVariable::pwd Output::OverWrite impossible d'ouvrir le fichier");
                     file_open.write_all(pwd.as_bytes()).await.expect("ShellVariable::pwd Output::OverWrite impossible d'écrire");
                 },
-                Output::Pipe(mut pipe) => {
-                    pipe.write_all(pwd.as_bytes()).await.expect("ShellVariable::pwd Output::Pipe impossible d'écrire dans le pipe");
-                },
+                Output::Pipe => (),
                 Output::Stdout => {
                     println!("{}", pwd);
                 }
@@ -256,7 +252,7 @@ impl ShellVariables {
 
     // Je dois envoyer les variables internes mais pas les externes 
     // Je dois rediriger l'output et l'input
-    pub async fn rsh(&self, instruction: Instruction, is_spawn: IsSpawn) -> i32 {
+    pub async fn rsh(&self, instruction: &mut Instruction, is_spawn: IsSpawn) -> i32 {
         let cmd = "/root/rust/projet_final/rust_shell/target/debug/rust_shell";
 
         let mut command = tokio::process::Command::new(cmd);
@@ -543,13 +539,13 @@ impl ShellVariables {
 
     }
 
-    pub async fn exec_instruction(&mut self, instruction : Instruction, is_spawn: IsSpawn) -> i32 {
+    pub async fn exec_instruction(&mut self, instruction : &mut Instruction, is_spawn: IsSpawn) -> Result<tokio::process::Command, i32> {
         let cmd = instruction.get_command();
 
         let mut res = 0;
         if let Some(&shell_command) = SHELL_COMMANDS.get(cmd.as_str()) {
             if is_spawn == IsSpawn::NOTSPAWN {
-                return match shell_command {
+                return Err(match shell_command {
                     
                     ShellCommands::CD => self.cd(instruction).await,
                     ShellCommands::ECHO => self.echo(instruction).await,
@@ -558,9 +554,9 @@ impl ShellVariables {
                     ShellCommands::HISTORY => self.history(instruction).await,
                     ShellCommands::PWD => self.pwd(instruction).await,
                     ShellCommands::RSH => self.rsh(instruction, is_spawn).await,
-                };
+                });
             } else {
-                return match shell_command {
+                return Err(match shell_command {
                     
                     ShellCommands::CD => {self.cd(instruction); 0},
                     ShellCommands::ECHO => {self.echo(instruction); 0},
@@ -569,18 +565,15 @@ impl ShellVariables {
                     ShellCommands::HISTORY => {self.history(instruction); 0},
                     ShellCommands::PWD => {self.pwd(instruction); 0},
                     ShellCommands::RSH => {self.rsh(instruction, is_spawn); 0},
-                };
+                });
             }
 
         }
         
         let mut instruction = instruction;
-        let cmd: String = match ShellError::handle_shell_error(self.look_for_path(&cmd)) {
-            Ok(cmd) => cmd,
-            Err(status) => return status,
-        };
+        let cmd: String = ShellError::handle_shell_error(self.look_for_path(&cmd))?;
         instruction.set_command(cmd);
-        CommandExecuter::exec_instruction(instruction,is_spawn).await
+        Ok(CommandExecuter::exec_instruction(instruction,is_spawn).await)
     }
 
     pub fn look_into_variables(&self, variables: &str) -> Option<&str> {

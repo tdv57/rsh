@@ -12,7 +12,7 @@ pub enum Output{
     Stdout,
     FileAppend(String),
     FileOverwrite(String),
-    Pipe(Box<DuplexStream>),
+    Pipe,
 }
 
 impl Output {
@@ -46,11 +46,11 @@ impl Output {
         print!("{}",buffer);
     }
 
-    pub async fn write(mut instruction: Instruction, buffer: String) -> () {
+    pub async fn write(mut instruction: &mut Instruction, buffer: String) -> () {
         match instruction.take_o_put_stdout() {
             Output::FileAppend(file) => Self::write_to_file_append(file, buffer).expect("Output::write::write_to_file_append erreur lors de l'ouverture du ficher"),
             Output::FileOverwrite(file) => Self::write_to_file_overwrite(file, buffer).expect("Output::write::write_to_file_overwrite erreur lors de l'ouverture du ficher"),
-            Output::Pipe(pipe) => Self::write_to_pipe(pipe, buffer).await,
+            Output::Pipe => (),
             Output::Stdout => Self::write_to_stdout(buffer),
         };
     }

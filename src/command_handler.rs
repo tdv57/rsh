@@ -563,103 +563,117 @@ pub mod handler {
         // Ici il faut que j'ai des instructions qui s'enchainent
         pub async fn pipe(shell_variables: Arc<Mutex<ShellVariables>>, instructions_or_tokens: Vec<InstructionOrToken>, is_spawn: IsSpawn) -> i32 {
             let mut instructions_or_tokens_peekable = instructions_or_tokens.into_iter().peekable();
-            let mut last_input_pipe: Option<DuplexStream> = None;
-            let mut last_handle = None;
-
+            let mut handles= Vec::new();
+            let mut previous_pipe = false;
             while let Some(instruction_or_token) = instructions_or_tokens_peekable.next() {
                 let mut instruction = match instruction_or_token {
                     InstructionOrToken::Instruction(instruction) => {instruction},
                     _ => panic!("CommandExecuter::pipe must have Instruction but have something else"),
                 };
 
+                if previous_pipe {
+                    instruction.set_i(Input::Pipe);
+                } 
+
                 let is_pipe = match instructions_or_tokens_peekable.next() {
-                    Some(InstructionOrToken::Token(token)) if Token::is_pipe(&token) => true,
+                    Some(InstructionOrToken::Token(token)) if Token::is_pipe(&token) => {previous_pipe=true;true},
                     Some(_) => panic!("CommandExecuter::pipe must have Token pipe after instruction but found something else"),
                     None => false,
                 };
 
-                if let Some(input_pipe) = last_input_pipe.take() {
-                    instruction.set_i(Input::Pipe(Box::new(input_pipe)));
+
+                if is_pipe {
+                    instruction.set_o(Output::Pipe);
+                }
+                
+                // Je crée mon child
+                let mut shell_variables_clone = shell_variables.clone();
+                let mut shell_variables_lock = shell_variables_clone.lock().await;
+                let mut cmd = match shell_variables_lock.exec_instruction(&mut instruction, is_spawn.clone()).await {
+                    Ok(cmd) => {drop(shell_variables_lock); cmd},
+                    Err(status) => {handles.push(Err(status)); drop(shell_variables_lock); continue;}, // builtin ou erreur
+                };
+                
+                match instruction.take_i_put_stdin() {
+                    Input::Stdin => {
+                        cmd.stdin(std::process::Stdio::inherit());
+                    }
+                    Input::File(path) => {
+                        let file = std::fs::File::open(path).unwrap();
+                        cmd.stdin(std::process::Stdio::from(file));
+                    }
+                    Input::Pipe => {
+                        cmd.stdin(std::process::Stdio::piped());
+                    }
                 }
 
-                let next_output_pipe = if is_pipe {
-                    let (output_pipe, input_pipe) = duplex(1024);
-                    last_input_pipe = Some(input_pipe);
-                    Some(output_pipe)
-                } else {
-                    last_input_pipe = None;
-                    None
+                match instruction.take_o_put_stdout() {
+                    Output::Stdout => {
+                        cmd.stdout(std::process::Stdio::inherit());
+                    }
+                    Output::FileOverwrite(path) => {
+                        let file = std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(path).unwrap();
+                        cmd.stdout(std::process::Stdio::from(file));
+                    }
+                    Output::FileAppend(path) => {
+                        let file = std::fs::OpenOptions::new().write(true).create(true).append(true).open(path).unwrap();
+                        cmd.stdout(std::process::Stdio::from(file));
+                    }
+                    Output::Pipe => {
+                        cmd.stdout(std::process::Stdio::piped());
+                    }
+                }
+                
+                
+                let mut handle = cmd.spawn().unwrap();
+                handles.push(Ok(handle));
+                
+            }
+
+            for i in 0..handles.len() - 1 {
+                let stdout_prev = match &mut handles[i] {
+                    Ok(child) => child.stdout.take(),
+                    Err(_) => None,
+                };
+                let stdin_next = match &mut handles[i + 1] {
+                    Ok(child) => child.stdin.take(),
+                    Err(_) => None,
                 };
 
-                if let Some(output_pipe) = next_output_pipe {
-                    instruction.set_o(Output::Pipe(Box::new(output_pipe)));
-                }
-                let mut shell_variables_clone = shell_variables.clone();
-                let is_spawn_clone = is_spawn.clone();
-                let handle = tokio::spawn(async move {
-                    let mut shell_variables_lock = shell_variables_clone.lock().await;
-                    shell_variables_lock.exec_instruction(instruction, is_spawn_clone.clone()).await
-                });
-
-                last_handle = Some(handle);
-            }
-
-            if let Some(handle) = last_handle {
-                match handle.await {
-                    Ok(status) => return status,
-                    Err(_) => return 1,
+                if let (Some(mut out), Some(mut inp)) = (stdout_prev, stdin_next) {
+                    tokio::spawn(async move {
+                        tokio::io::copy(&mut out, &mut inp).await.unwrap();
+                    });
                 }
             }
-            0
+
+            if is_spawn == IsSpawn::NOTSPAWN {
+                if let Some(last) = handles.last_mut() {
+                    match last {
+                        Ok(child) => {
+                            return handle_ctrl_c(child).await;
+                        }
+                        Err(status) => {
+                            return *status;
+                        }
+                    }
+                } else {
+                    return 0;
+                }
+            } else {
+                0
+            }
         }
 
-        pub async fn exec_instruction(mut instruction: Instruction, is_spawn: IsSpawn) -> i32 {
-            let input = instruction.take_i_put_stdin();
-            let output = instruction.take_o_put_stdout();
+        pub async fn exec_instruction(instruction: &mut Instruction, is_spawn: IsSpawn) -> tokio::process::Command {
+
             let cmd: String = instruction.get_command();
             let args: Vec<String> = instruction.get_args();
 
             let mut child_cmd = tokio::process::Command::new(cmd);
             child_cmd.args(args);
 
-            match input {
-                Input::Stdin => {
-                    child_cmd.stdin(std::process::Stdio::inherit());
-                }
-                Input::File(path) => {
-                    let file = std::fs::File::open(path).unwrap();
-                    child_cmd.stdin(std::process::Stdio::from(file));
-                }
-                Input::Pipe(_) => {
-                    child_cmd.stdin(std::process::Stdio::piped());
-                }
-            }
-
-            match output {
-                Output::Stdout => {
-                    child_cmd.stdout(std::process::Stdio::inherit());
-                }
-                Output::FileOverwrite(path) => {
-                    let file = std::fs::OpenOptions::new().write(true).create(true).truncate(true).open(path).unwrap();
-                    child_cmd.stdout(std::process::Stdio::from(file));
-                }
-                Output::FileAppend(path) => {
-                    let file = std::fs::OpenOptions::new().write(true).create(true).append(true).open(path).unwrap();
-                    child_cmd.stdout(std::process::Stdio::from(file));
-                }
-                Output::Pipe(_) => {
-                    child_cmd.stdout(std::process::Stdio::piped());
-                }
-            }
-
-            let mut child = child_cmd.spawn().unwrap();
-
-            if is_spawn != IsSpawn::SPAWN {
-                handle_ctrl_c(&mut child).await
-            } else {
-                0
-            }
-            
+            return child_cmd;
         }
     }
 }

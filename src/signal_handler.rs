@@ -154,7 +154,6 @@ pub mod SignalHandler {
                           break;
                         }
                     }
-
                     commun_prefix = new_commun_prefix;
                 } 
                 if commun_prefix.len() > cmd_or_arg.len() {

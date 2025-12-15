@@ -11,7 +11,7 @@ use crate::instruction::Instruction;
 pub enum Input {
     Stdin,
     File(String),
-    Pipe(Box<DuplexStream>),
+    Pipe,
 }
 
 impl Input {
@@ -36,7 +36,7 @@ impl Input {
         match instruction.take_i_put_stdin() {
             Input::File(file) => Self::read_from_file(file).expect("Output::read::read_from_file erreur lors de l'ouverture du fichier"),
             Input::Stdin => Self::read_from_stdout(instruction.get_args()),
-            Input::Pipe(pipe) => Self::read_from_pipe(pipe).await,
+            Input::Pipe => String::new(),
         }
     }
 }
